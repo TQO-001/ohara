@@ -1,0 +1,59 @@
+# ============================================================
+# Nginx Configuration for ohara.laughtale.co.za
+#
+# SETUP INSTRUCTIONS:
+# 1. Copy to: sudo nano /etc/nginx/sites-available/ohara.laughtale.co.za
+# 2. Enable:  sudo ln -s /etc/nginx/sites-available/ohara.laughtale.co.za /etc/nginx/sites-enabled/
+# 3. Test:    sudo nginx -t
+# 4. Restart: sudo systemctl restart nginx
+# 5. SSL:     sudo certbot --nginx -d ohara.laughtale.co.za
+#
+# After Certbot runs, it will automatically add the HTTPS block
+# and redirect HTTP → HTTPS. The config below will be modified.
+# ============================================================
+
+server {
+    listen 80;
+    server_name ohara.laughtale.co.za;
+
+    # Allow large file uploads (100MB)
+    client_max_body_size 100M;
+
+    # Increase timeouts for large uploads
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+
+    location / {
+        # Forward all requests to Next.js on port 3010
+        proxy_pass http://localhost:3010;
+        
+        proxy_http_version 1.1;
+        
+        # Required for WebSocket support (Next.js hot reload uses this)
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        
+        # Pass the real client IP to the app
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# NOTE: After running certbot, this file will be modified to look like:
+#
+# server {
+#     listen 443 ssl;
+#     server_name ohara.laughtale.co.za;
+#     ssl_certificate /etc/letsencrypt/live/ohara.laughtale.co.za/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/ohara.laughtale.co.za/privkey.pem;
+#     ... (same location block)
+# }
+# server {
+#     listen 80;
+#     server_name ohara.laughtale.co.za;
+#     return 301 https://$host$request_uri;
+# }
