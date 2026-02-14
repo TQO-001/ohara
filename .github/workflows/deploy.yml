@@ -8,7 +8,7 @@
 #   HOST          → Your VPS public IP address
 #   USERNAME      → Your VPS username
 #   SSH_PRIVATE_KEY → Private key for deploy access
-#   PORT          → Your SSH port (usually 22)
+#   PORT          → Your SSH port
 # ============================================================
 
 name: 🐋 Deploy Ohara

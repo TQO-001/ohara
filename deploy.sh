@@ -52,7 +52,7 @@ for migration in "$PROJECT_DIR"/migrations/*.sql; do
   MIGRATION_NUM=$(basename "$migration" | sed 's/[^0-9].*//')
   if [ "$MIGRATION_NUM" -gt "$LAST" ]; then
     echo "   Running migration: $(basename $migration)"
-    psql "$DATABASE_URL" -f "$migration"
+    psql -d "$DATABASE_URL" -f "$migration"
     echo "$MIGRATION_NUM" > "$PROJECT_DIR/.last_migration"
   fi
 done
