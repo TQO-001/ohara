@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import { BookOpen, FolderOpen, LayoutDashboard, LogOut, Menu, X } from 'lucide-react';
 
@@ -31,49 +32,63 @@ export default function DashboardNav({ user }: DashboardNavProps) {
   }
 
   return (
-    <nav className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <nav className="bg-[#0a0a0a]/80 backdrop-blur-md border-b border-white/5 sticky top-0 z-50">
+      <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
 
-          {/* Logo */}
-          <Link href="/dashboard" className="flex items-center gap-2 font-bold text-xl text-purple-600">
-            <BookOpen size={24} />
-            Ohara
+          {/* Logo Section */}
+          <Link href="/dashboard" className="flex items-center gap-3 group">
+            <div className="relative w-8 h-8 transition-transform group-hover:scale-110">
+               <Image 
+                src="/logo.png" 
+                alt="Ohara Logo" 
+                fill
+                className="object-contain"
+              />
+            </div>
+            <span className="text-xl font-semibold tracking-tight text-white uppercase group-hover:text-purple-400 transition-colors">
+              Ohara
+            </span>
           </Link>
 
-          {/* Desktop Nav */}
+          {/* Desktop Navigation - Slim Typography */}
           <div className="hidden md:flex items-center gap-1">
-            {navLinks.map(({ href, label, icon: Icon }) => (
-              <Link
-                key={href}
-                href={href}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  pathname === href
-                    ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
-                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
-              >
-                <Icon size={16} />
-                {label}
-              </Link>
-            ))}
+            {navLinks.map(({ href, label, icon: Icon }) => {
+              const isActive = pathname === href;
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-medium transition-all ${
+                    isActive
+                      ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <Icon size={16} strokeWidth={isActive ? 2.5 : 2} />
+                  {label}
+                </Link>
+              );
+            })}
           </div>
 
-          {/* User + Logout */}
-          <div className="hidden md:flex items-center gap-3">
-            <span className="text-sm text-gray-500 dark:text-gray-400">{user.name}</span>
+          {/* User Actions */}
+          <div className="hidden md:flex items-center gap-6">
+            <span className="text-[13px] font-medium text-gray-500">
+              {user.name.toLowerCase().replace(' ', '.')}
+            </span>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              className="group flex items-center gap-2 text-[13px] font-semibold text-gray-400 hover:text-red-400 transition-colors"
             >
-              <LogOut size={16} />
-              Logout
+              <LogOut size={16} className="group-hover:-translate-x-1 transition-transform" />
+              Sign out
             </button>
           </div>
 
-          {/* Mobile menu button */}
+          {/* Mobile menu toggle */}
           <button
-            className="md:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="md:hidden p-2 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition-colors"
             onClick={() => setMobileOpen(!mobileOpen)}
           >
             {mobileOpen ? <X size={20} /> : <Menu size={20} />}
@@ -81,31 +96,33 @@ export default function DashboardNav({ user }: DashboardNavProps) {
         </div>
       </div>
 
-      {/* Mobile Menu */}
+      {/* Mobile Menu - Glassmorphism */}
       {mobileOpen && (
-        <div className="md:hidden border-t border-gray-200 dark:border-gray-700 px-4 py-3 space-y-1">
+        <div className="md:hidden bg-[#0a0a0a] border-t border-white/5 px-4 py-4 space-y-2 animate-in slide-in-from-top-2 duration-200">
           {navLinks.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
               onClick={() => setMobileOpen(false)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                 pathname === href
-                  ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  ? 'bg-purple-500/10 text-purple-400 border border-purple-500/10'
+                  : 'text-gray-400 hover:bg-white/5'
               }`}
             >
-              <Icon size={16} />
+              <Icon size={18} />
               {label}
             </Link>
           ))}
-          <button
-            onClick={handleLogout}
-            className="flex w-full items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-          >
-            <LogOut size={16} />
-            Logout
-          </button>
+          <div className="pt-4 mt-2 border-t border-white/5">
+            <button
+              onClick={handleLogout}
+              className="flex w-full items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-red-400 hover:bg-red-400/10 transition-colors"
+            >
+              <LogOut size={18} />
+              Sign out
+            </button>
+          </div>
         </div>
       )}
     </nav>

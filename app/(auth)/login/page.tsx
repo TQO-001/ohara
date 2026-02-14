@@ -1,11 +1,9 @@
-// src/app/(auth)/login/page.tsx
-
 'use client';
 
 import { useState, FormEvent, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { BookOpen } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 function LoginContent() {
   const router = useRouter();
@@ -30,7 +28,6 @@ function LoginContent() {
       });
 
       const data = await res.json();
-
       if (!res.ok) {
         setError(data.error ?? 'Login failed');
         return;
@@ -46,83 +43,89 @@ function LoginContent() {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+    <div className="w-full max-w-sm">
+      <div className="text-center mb-8">
+        {/* Logo from public folder */}
+        <div className="flex justify-center mb-4">
+          <Image 
+            src="/logo.png" 
+            alt="Ohara Logo" 
+            width={64} 
+            height={64} 
+            className="object-contain"
+          />
+        </div>
+        <h1 className="text-4xl font-semibold text-white tracking-tight mb-2 uppercase">
+          OHARA
+        </h1>
+        <p className="text-gray-400 text-sm">
+          New here?{' '}
+          <Link href="/register" className="text-purple-400 hover:text-purple-300 font-medium transition-colors">
+            Create an account
+          </Link>
+        </p>
+      </div>
+
       <form onSubmit={handleSubmit} className="space-y-5">
         {error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg px-4 py-3 text-sm">
+          <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl px-4 py-2.5 text-sm text-center">
             {error}
           </div>
         )}
 
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-            Email address
-          </label>
+        <div className="space-y-2">
+          <label className="text-[13px] font-medium text-gray-300 ml-1">Email address</label>
           <input
-            id="email"
             type="email"
             required
             value={email}
             onChange={e => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition"
+            placeholder="name@example.com"
+            className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all shadow-inner"
           />
         </div>
 
-        <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-            Password
-          </label>
+        <div className="space-y-2">
+          <div className="flex justify-between items-center px-1">
+            <label className="text-[13px] font-medium text-gray-300">Password</label>
+            <Link href="/forgot-password" size="sm" className="text-purple-400 text-xs font-medium hover:text-purple-300">
+              Forgot?
+            </Link>
+          </div>
           <input
-            id="password"
             type="password"
             required
             value={password}
             onChange={e => setPassword(e.target.value)}
-            placeholder="Enter your password"
-            className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition"
+            placeholder="••••••••"
+            className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all shadow-inner"
           />
         </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
-        >
-          {loading ? 'Signing in…' : 'Sign in'}
-        </button>
+        <div className="pt-2 space-y-6">
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-medium py-3 px-4 rounded-xl transition-all shadow-lg shadow-purple-900/20 active:scale-[0.98]"
+          >
+            {loading ? 'Signing in...' : 'Sign in'}
+          </button>
+
+          <p className="text-center text-sm text-gray-400">
+            Coming Soon: Sign in with Google, GitHub, and more!
+          </p>
+        </div>
       </form>
-      
-      <p className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
-        Don&apos;t have an account?{' '}
-        <Link href="/register" className="text-purple-600 hover:underline">
-          Create one
-        </Link>
-      </p>
     </div>
   );
 }
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-600 rounded-2xl mb-4">
-            <BookOpen className="text-white" size={32} />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Ohara</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Sign in to your workspace</p>
-        </div>
-
-        <Suspense fallback={
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 flex justify-center">
-            <p className="text-gray-500">Loading form...</p>
-          </div>
-        }>
-          <LoginContent />
-        </Suspense>
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] px-4 font-sans antialiased">
+      <Suspense fallback={<div className="text-purple-500">Loading...</div>}>
+        <LoginContent />
+      </Suspense>
     </div>
   );
 }
