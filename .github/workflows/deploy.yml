@@ -1,0 +1,82 @@
+# ============================================================
+# .github/workflows/deploy.yml
+# 
+# Trigger: Every push to the `main` branch
+# What it does: SSHs into the VPS and runs deploy.sh
+#
+# Required GitHub Secrets (Settings → Secrets → Actions):
+#   HOST          → Your VPS public IP address
+#   USERNAME      → Your VPS username
+#   SSH_PRIVATE_KEY → Private key for deploy access
+#   PORT          → Your SSH port (usually 22)
+# ============================================================
+
+name: 🐋 Deploy Ohara
+
+on:
+  push:
+    branches: [main]
+  # Allow manual trigger from the GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Step 1: Show what triggered this deployment ──────────
+      - name: 📋 Log deployment info
+        run: |
+          echo "Deploying commit: ${{ github.sha }}"
+          echo "Triggered by: ${{ github.actor }}"
+          echo "Branch: ${{ github.ref_name }}"
+
+      # ── Step 2: SSH into VPS and run the deploy script ───────
+      - name: 🚀 Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORT }}
+          # Set a timeout — if deploy takes longer than 5 min, fail
+          command_timeout: 5m
+          script: |
+            # Navigate to project and run the deploy script
+            cd /var/www/ohara
+            
+            # Ensure the script is executable
+            chmod +x deploy.sh
+            
+            # Run the deployment
+            ./deploy.sh
+          
+          # Show the deploy.sh output in GitHub Actions logs
+          debug: false
+
+      # ── Step 3: Verify the app is responding ──────────────────
+      - name: ✅ Health check
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORT }}
+          script: |
+            # Wait a moment for the app to fully restart
+            sleep 5
+            
+            # Check if the app responds on port 3010
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3010 || echo "000")
+            
+            if [ "$STATUS" = "200" ] || [ "$STATUS" = "307" ] || [ "$STATUS" = "302" ]; then
+              echo "✅ Health check passed (HTTP $STATUS)"
+            else
+              echo "❌ Health check failed (HTTP $STATUS)"
+              echo "PM2 status:"
+              pm2 status
+              echo "Last 20 log lines:"
+              pm2 logs ohara --lines 20 --nostream
+              exit 1
+            fi
