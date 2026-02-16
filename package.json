@@ -11,8 +11,10 @@
     "db:seed": "echo 'Seed data is in the migration file'"
   },
   "dependencies": {
+    "@types/jszip": "^3.4.0",
     "bcryptjs": "^2.4.3",
     "jose": "^5.9.6",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.511.0",
     "next": "^15.3.3",
     "postgres": "^3.4.8",

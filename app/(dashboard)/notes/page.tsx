@@ -1,149 +1,65 @@
 'use client';
 
+// ============================================================
+// app/(dashboard)/notes/page.tsx
+//
+// Notes workspace. This file is the orchestration layer:
+//   - All state lives here
+//   - All API calls live here
+//   - UI components are imported from components/
+//
+// Features:
+//   1. Upload / Download vault or single notes  ← NEW
+//   2. Drag-and-drop to reorganise the sidebar  ← NEW
+//   3. Markdown formatting toolbar              ← NEW
+// ============================================================
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  FileText, Folder, FolderOpen, Plus, Trash2, FolderPlus,
-  Menu, X, AlertCircle, Info, CheckCircle, AlertTriangle,
-  Lightbulb, HelpCircle, Bug, Quote, ChevronRight, ChevronDown,
-  Edit2, Download, Loader2, BookOpen
+  Plus, Trash2, FolderPlus, Menu, X, Loader2, BookOpen,
+  Download, Upload, Edit2, FileText, MoreHorizontal,
 } from 'lucide-react';
 import type { NotesVault, NotesItem } from '@/types';
+import { ContextMenu, TreeItem } from '@/components/file-tree';
+import type { ContextMenuItem } from '@/components/file-tree';
+import { Toolbar, LivePreview } from '@/components/editor';
 
-// ── Markdown Parser ──────────────────────────────────────────
+// ── Types ────────────────────────────────────────────────────
 
-const calloutConfig: Record<string, { icon: React.ComponentType<{ size?: number; className?: string }>, colors: Record<string, string> }> = {
-  note:    { icon: Info,          colors: { bg: 'bg-blue-50 dark:bg-blue-900/20',   border: 'border-blue-500',   text: 'text-blue-700 dark:text-blue-300',     icon: 'text-blue-500',    title: 'text-blue-800 dark:text-blue-200' }},
-  info:    { icon: Info,          colors: { bg: 'bg-blue-50 dark:bg-blue-900/20',   border: 'border-blue-500',   text: 'text-blue-700 dark:text-blue-300',     icon: 'text-blue-500',    title: 'text-blue-800 dark:text-blue-200' }},
-  tip:     { icon: Lightbulb,     colors: { bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-500',  text: 'text-green-700 dark:text-green-300',   icon: 'text-green-500',   title: 'text-green-800 dark:text-green-200' }},
-  success: { icon: CheckCircle,   colors: { bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-500',  text: 'text-green-700 dark:text-green-300',   icon: 'text-green-500',   title: 'text-green-800 dark:text-green-200' }},
-  question:{ icon: HelpCircle,    colors: { bg: 'bg-purple-50 dark:bg-purple-900/20',border: 'border-purple-500', text: 'text-purple-700 dark:text-purple-300', icon: 'text-purple-500',  title: 'text-purple-800 dark:text-purple-200' }},
-  warning: { icon: AlertTriangle, colors: { bg: 'bg-yellow-50 dark:bg-yellow-900/20',border: 'border-yellow-500',text: 'text-yellow-800 dark:text-yellow-300', icon: 'text-yellow-600',  title: 'text-yellow-900 dark:text-yellow-200' }},
-  danger:  { icon: AlertCircle,   colors: { bg: 'bg-red-50 dark:bg-red-900/20',     border: 'border-red-500',    text: 'text-red-700 dark:text-red-300',       icon: 'text-red-500',     title: 'text-red-800 dark:text-red-200' }},
-  bug:     { icon: Bug,           colors: { bg: 'bg-red-50 dark:bg-red-900/20',     border: 'border-red-500',    text: 'text-red-700 dark:text-red-300',       icon: 'text-red-500',     title: 'text-red-800 dark:text-red-200' }},
-  example: { icon: FileText,      colors: { bg: 'bg-purple-50 dark:bg-purple-900/20',border: 'border-purple-500', text: 'text-purple-700 dark:text-purple-300', icon: 'text-purple-500',  title: 'text-purple-800 dark:text-purple-200' }},
-  quote:   { icon: Quote,         colors: { bg: 'bg-gray-50 dark:bg-gray-800',      border: 'border-gray-400 dark:border-gray-600', text: 'text-gray-700 dark:text-gray-300', icon: 'text-gray-500', title: 'text-gray-800 dark:text-gray-200' }},
-};
-
-function escapeHtml(text: string) {
-  return text.replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;' }[m] ?? m));
+interface CtxMenuState {
+  x: number;
+  y: number;
+  items: ContextMenuItem[];
 }
 
-function parseMarkdown(markdown: string): string {
-  if (!markdown) return '';
-  let html = markdown;
-
-  html = html.replace(/```mermaid\n([\s\S]*?)```/g, (_m, code) =>
-    `<div class="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 rounded-r-lg p-4 my-4">
-      <div class="font-semibold text-blue-700 dark:text-blue-300 mb-2">📊 Mermaid Diagram</div>
-      <pre class="bg-white dark:bg-gray-800 p-3 rounded text-sm overflow-x-auto"><code>${escapeHtml(code.trim())}</code></pre>
-    </div>`
-  );
-
-  html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (_m, lang, code) =>
-    `<pre class="bg-gray-900 text-gray-100 p-4 rounded-lg my-4 overflow-x-auto text-sm"><code class="language-${lang || 'plaintext'}">${escapeHtml(code.trim())}</code></pre>`
-  );
-
-  html = html.replace(/^##### (.*$)/gim, '<h5 class="text-base font-bold mt-3 mb-1 text-gray-800 dark:text-gray-200">$1</h5>');
-  html = html.replace(/^#### (.*$)/gim, '<h4 class="text-lg font-bold mt-4 mb-2 text-gray-800 dark:text-gray-200">$1</h4>');
-  html = html.replace(/^### (.*$)/gim, '<h3 class="text-xl font-bold mt-5 mb-2 text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700 pb-1">$1</h3>');
-  html = html.replace(/^## (.*$)/gim, '<h2 class="text-2xl font-bold mt-6 mb-3 text-blue-600 dark:text-blue-400">$1</h2>');
-  html = html.replace(/^# (.*$)/gim, '<h1 class="text-3xl font-bold mt-6 mb-4 text-gray-900 dark:text-gray-100">$1</h1>');
-
-  html = html.replace(/~~(.*?)~~/g, '<del class="text-gray-400">$1</del>');
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900 dark:text-gray-100">$1</strong>');
-  html = html.replace(/\*(.*?)\*/g, '<em class="italic">$1</em>');
-  html = html.replace(/`([^`]+)`/g, '<code class="bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm font-mono text-pink-600 dark:text-pink-400">$1</code>');
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-blue-600 dark:text-blue-400 underline" target="_blank" rel="noopener">$1</a>');
-  html = html.replace(/^---$/gm, '<hr class="my-6 border-t-2 border-gray-200 dark:border-gray-700" />');
-  html = html.replace(/^\- (.+)$/gm, '<li class="ml-4 my-0.5 list-disc">$1</li>');
-  html = html.replace(/^\d+\. (.+)$/gm, '<li class="ml-4 my-0.5 list-decimal">$1</li>');
-  html = html.replace(/^> (.+)$/gm, '<blockquote class="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic text-gray-600 dark:text-gray-400 my-3">$1</blockquote>');
-  html = html.replace(/\n\n/g, '</p><p class="my-3 text-gray-800 dark:text-gray-200 leading-relaxed">');
-  html = '<p class="my-3 text-gray-800 dark:text-gray-200 leading-relaxed">' + html + '</p>';
-  html = html.replace(/\n/g, '<br/>');
-  return html;
-}
-
-// ── Context Menu ─────────────────────────────────────────────
-
-function ContextMenu({ x, y, items, onClose }: {
-  x: number; y: number;
-  items: { label: string; icon?: any; action: () => void }[];
-  onClose: () => void;
-}) {
-  return (
-    <div
-      className="fixed bg-[#121212]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl py-1.5 z-[100] min-w-[180px]"
-      style={{ left: x, top: y }}
-    >
-      {items.map((item, i) => (
-        <button
-          key={i}
-          onClick={e => { e.stopPropagation(); item.action(); onClose(); }}
-          className="w-full px-4 py-2 text-left text-[13px] font-medium hover:bg-white/10 flex items-center gap-3 text-gray-300 hover:text-white transition-colors"
-        >
-          {item.icon && <item.icon size={14} />}
-          {item.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ── Tree Item ────────────────────────────────────────────────
-
-function TreeItem({ item, level, selectedId, onSelect, onContextMenu }: any) {
-  const [expanded, setExpanded] = React.useState(true);
-  const isFolder = item.item_type === 'folder';
-  const isSelected = !isFolder && selectedId === item.id;
-
-  return (
-    <div>
-      <div
-        onClick={() => isFolder ? setExpanded(e => !e) : onSelect(item)}
-        onContextMenu={e => onContextMenu(e, item)}
-        style={{ paddingLeft: `${level * 12 + 12}px` }}
-        className={`flex items-center gap-2.5 py-2 pr-3 mx-2 rounded-lg cursor-pointer text-[13px] transition-all group ${
-          isSelected
-            ? 'bg-purple-500/10 text-purple-400 font-semibold border border-purple-500/20'
-            : 'hover:bg-white/5 text-gray-400 hover:text-gray-200'
-        }`}
-      >
-        {isFolder
-          ? (expanded ? <ChevronDown size={14} className="text-gray-500" /> : <ChevronRight size={14} className="text-gray-500" />)
-          : <FileText size={15} className="ml-[18px] text-gray-600 group-hover:text-gray-400" />
-        }
-        <span className="truncate">{item.name}</span>
-      </div>
-      {isFolder && expanded && item.children?.map((child: any) => (
-        <TreeItem key={child.id} item={child} level={level + 1} selectedId={selectedId} onSelect={onSelect} onContextMenu={onContextMenu} />
-      ))}
-    </div>
-  );
-}
-
-// ── Main Editor ───────────────────────────────────────────────
+// ── Main Page ─────────────────────────────────────────────────
 
 export default function NotesPage() {
-  const [vaults, setVaults] = useState<NotesVault[]>([]);
+  // ── State ──────────────────────────────────────────────────
+  const [vaults,         setVaults]         = useState<NotesVault[]>([]);
   const [currentVaultId, setCurrentVaultId] = useState<string | null>(null);
-  const [tree, setTree] = useState<NotesItem[]>([]);
-  const [selectedItem, setSelectedItem] = useState<NotesItem | null>(null);
-  const [content, setContent] = useState('');
-  const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [treeLoading, setTreeLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: NotesItem } | null>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [tree,           setTree]           = useState<NotesItem[]>([]);
+  const [selectedItem,   setSelectedItem]   = useState<NotesItem | null>(null);
+  const [content,        setContent]        = useState('');
+  const [viewMode,       setViewMode]       = useState<'edit' | 'preview'>('edit');
+  const [sidebarOpen,    setSidebarOpen]    = useState(false);
+  const [loading,        setLoading]        = useState(true);
+  const [treeLoading,    setTreeLoading]    = useState(false);
+  const [saving,         setSaving]         = useState(false);
+  const [ctxMenu,        setCtxMenu]        = useState<CtxMenuState | null>(null);
+  const [dragOverId,     setDragOverId]     = useState<string | undefined>(undefined);
+  const [importing,      setImporting]      = useState(false);
 
-  // Load vaults
+  const saveTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const importRef   = useRef<HTMLInputElement | null>(null);
+
+  // ── Load vaults on mount ───────────────────────────────────
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch('/api/notes/vaults');
+        const res  = await fetch('/api/notes/vaults');
         const json = await res.json();
         const v: NotesVault[] = json.data ?? [];
         setVaults(v);
@@ -154,13 +70,13 @@ export default function NotesPage() {
     })();
   }, []);
 
-  // Load tree when vault changes
+  // ── Load tree when vault changes ───────────────────────────
   const loadTree = useCallback(async (vaultId: string) => {
     setTreeLoading(true);
     setSelectedItem(null);
     setContent('');
     try {
-      const res = await fetch(`/api/notes/vaults/${vaultId}/items`);
+      const res  = await fetch(`/api/notes/vaults/${vaultId}/items`);
       const json = await res.json();
       setTree(json.data ?? []);
     } finally {
@@ -172,11 +88,23 @@ export default function NotesPage() {
     if (currentVaultId) loadTree(currentVaultId);
   }, [currentVaultId, loadTree]);
 
-  // Select a file — fetch its content
+  // ── Keyboard shortcuts ─────────────────────────────────────
+  useEffect(() => {
+    function handle(e: KeyboardEvent) {
+      const isMac = navigator.platform.toUpperCase().includes('MAC');
+      const mod   = isMac ? e.metaKey : e.ctrlKey;
+      if (!mod) return;
+      if (e.key === 's') { e.preventDefault(); flushSave(); }
+    }
+    document.addEventListener('keydown', handle);
+    return () => document.removeEventListener('keydown', handle);
+  });
+
+  // ── File selection ─────────────────────────────────────────
   async function selectFile(item: NotesItem) {
     if (selectedItem?.id) await flushSave();
     try {
-      const res = await fetch(`/api/notes/items/${item.id}`);
+      const res  = await fetch(`/api/notes/items/${item.id}`);
       const json = await res.json();
       setSelectedItem(json.data);
       setContent(json.data?.content ?? '');
@@ -185,18 +113,21 @@ export default function NotesPage() {
       setContent(item.content ?? '');
     }
     setSidebarOpen(false);
+    setViewMode('edit');
+    // Focus textarea after brief delay for transition
+    setTimeout(() => textareaRef.current?.focus(), 80);
   }
 
-  // Auto-save with debounce
+  // ── Auto-save ──────────────────────────────────────────────
   async function flushSave() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     if (!selectedItem) return;
     setSaving(true);
     try {
       await fetch(`/api/notes/items/${selectedItem.id}`, {
-        method: 'PATCH',
+        method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body:    JSON.stringify({ content }),
       });
     } finally {
       setSaving(false);
@@ -211,9 +142,9 @@ export default function NotesPage() {
       setSaving(true);
       try {
         await fetch(`/api/notes/items/${selectedItem.id}`, {
-          method: 'PATCH',
+          method:  'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: val }),
+          body:    JSON.stringify({ content: val }),
         });
       } finally {
         setSaving(false);
@@ -221,14 +152,14 @@ export default function NotesPage() {
     }, 1200);
   }
 
-  // Create vault
+  // ── Vault CRUD ─────────────────────────────────────────────
   async function createVault() {
     const name = prompt('Vault name:');
     if (!name?.trim()) return;
-    const res = await fetch('/api/notes/vaults', {
-      method: 'POST',
+    const res  = await fetch('/api/notes/vaults', {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim() }),
+      body:    JSON.stringify({ name: name.trim() }),
     });
     const json = await res.json();
     if (json.data) {
@@ -237,49 +168,19 @@ export default function NotesPage() {
     }
   }
 
-  // Create item
-  async function createItem(parentId: string | null, itemType: 'file' | 'folder') {
-    if (!currentVaultId) return;
-    const placeholder = itemType === 'file' ? 'Note name' : 'Folder name';
-    const name = prompt(`${placeholder}:`);
-    if (!name?.trim()) return;
-    const res = await fetch(`/api/notes/vaults/${currentVaultId}/items`, {
-      method: 'POST',
+  async function renameVault(id: string) {
+    const vault   = vaults.find(v => v.id === id);
+    const newName = prompt('New vault name:', vault?.name);
+    if (!newName?.trim() || newName === vault?.name) return;
+    const res  = await fetch(`/api/notes/vaults/${id}`, {
+      method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: name.trim(), item_type: itemType, parent_id: parentId }),
+      body:    JSON.stringify({ name: newName.trim() }),
     });
     const json = await res.json();
-    if (json.data) {
-      await loadTree(currentVaultId);
-      if (itemType === 'file') selectFile(json.data);
-    }
+    if (json.data) setVaults(prev => prev.map(v => v.id === id ? json.data : v));
   }
 
-  // Rename item
-  async function renameItem(item: NotesItem) {
-    const newName = prompt('New name:', item.name);
-    if (!newName?.trim() || newName === item.name) return;
-    await fetch(`/api/notes/items/${item.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName.trim() }),
-    });
-    if (currentVaultId) loadTree(currentVaultId);
-    if (selectedItem?.id === item.id) setSelectedItem(s => s ? { ...s, name: newName.trim() } : s);
-  }
-
-  // Delete item
-  async function deleteItem(item: NotesItem) {
-    const msg = item.item_type === 'folder'
-      ? `Delete folder "${item.name}" and all its contents?`
-      : `Delete "${item.name}"?`;
-    if (!confirm(msg)) return;
-    await fetch(`/api/notes/items/${item.id}`, { method: 'DELETE' });
-    if (currentVaultId) loadTree(currentVaultId);
-    if (selectedItem?.id === item.id) { setSelectedItem(null); setContent(''); }
-  }
-
-  // Delete vault
   async function deleteVault(id: string) {
     const vault = vaults.find(v => v.id === id);
     if (!confirm(`Delete vault "${vault?.name}" and ALL its notes? This cannot be undone.`)) return;
@@ -292,158 +193,457 @@ export default function NotesPage() {
     }
   }
 
-  // Export current file
-  function exportMd() {
+  // ── Item CRUD ──────────────────────────────────────────────
+  async function createItem(parentId: string | null, itemType: 'file' | 'folder') {
+    if (!currentVaultId) return;
+    const name = prompt(`${itemType === 'file' ? 'Note' : 'Folder'} name:`);
+    if (!name?.trim()) return;
+    const res  = await fetch(`/api/notes/vaults/${currentVaultId}/items`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ name: name.trim(), item_type: itemType, parent_id: parentId }),
+    });
+    const json = await res.json();
+    if (json.data) {
+      await loadTree(currentVaultId);
+      if (itemType === 'file') selectFile(json.data);
+    }
+  }
+
+  async function renameItem(item: NotesItem) {
+    const newName = prompt('New name:', item.name);
+    if (!newName?.trim() || newName === item.name) return;
+    await fetch(`/api/notes/items/${item.id}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ name: newName.trim() }),
+    });
+    if (currentVaultId) loadTree(currentVaultId);
+    if (selectedItem?.id === item.id) setSelectedItem(s => s ? { ...s, name: newName.trim() } : s);
+  }
+
+  async function deleteItem(item: NotesItem) {
+    const msg = item.item_type === 'folder'
+      ? `Delete folder "${item.name}" and all its contents?`
+      : `Delete "${item.name}"?`;
+    if (!confirm(msg)) return;
+    await fetch(`/api/notes/items/${item.id}`, { method: 'DELETE' });
+    if (currentVaultId) loadTree(currentVaultId);
+    if (selectedItem?.id === item.id) { setSelectedItem(null); setContent(''); }
+  }
+
+  // ── Feature 2: Move item (drag-and-drop) ───────────────────
+  async function moveItem(itemId: string, newParentId: string | null) {
+    if (!currentVaultId) return;
+    await fetch(`/api/notes/items/${itemId}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ parent_id: newParentId }),
+    });
+    loadTree(currentVaultId);
+  }
+
+  // ── Feature 1a: Export vault as JSON ──────────────────────
+  async function exportVault() {
+    if (!currentVaultId) return;
+    try {
+      const res  = await fetch(`/api/notes/vaults/${currentVaultId}/export`);
+      const json = await res.json();
+      if (!json.data) return;
+      const vault = vaults.find(v => v.id === currentVaultId);
+      const blob  = new Blob([JSON.stringify(json.data, null, 2)], { type: 'application/json' });
+      const url   = URL.createObjectURL(blob);
+      const a     = document.createElement('a');
+      a.href     = url;
+      a.download = `${vault?.name ?? 'vault'}.ohara.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Export failed:', e);
+    }
+  }
+
+  // ── Feature 1a: Export single note as .md ─────────────────
+  function exportNote() {
     if (!selectedItem || !content) return;
     const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = selectedItem.name; a.click();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = selectedItem.name.endsWith('.md') ? selectedItem.name : `${selectedItem.name}.md`;
+    a.click();
     URL.revokeObjectURL(url);
   }
 
-  function handleContextMenu(e: React.MouseEvent, item: NotesItem) {
-    setContextMenu({ x: e.clientX, y: e.clientY, item });
+  // ── Feature 1b: Import vault from .ohara.json ─────────────
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+
+      if (file.name.endsWith('.md')) {
+        // Import a single .md file into current vault
+        if (!currentVaultId) return alert('Select a vault first.');
+        const name = file.name;
+        const res  = await fetch(`/api/notes/vaults/${currentVaultId}/items`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ name, item_type: 'file', content: text }),
+        });
+        const json = await res.json();
+        if (json.data) {
+          await loadTree(currentVaultId);
+          selectFile(json.data);
+        }
+      } else if (file.name.endsWith('.json')) {
+        // Import full vault
+        const res  = await fetch('/api/notes/vaults/import', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(data),
+        });
+        const json = await res.json();
+        if (json.data?.vault) {
+          // Reload vault list and switch to new vault
+          const listRes  = await fetch('/api/notes/vaults');
+          const listJson = await listRes.json();
+          setVaults(listJson.data ?? []);
+          setCurrentVaultId(json.data.vault.id);
+          alert(`Imported "${json.data.vault.name}" with ${json.data.itemCount} items.`);
+        }
+      }
+    } catch (err) {
+      console.error('Import failed:', err);
+      alert('Import failed — check the file format.');
+    } finally {
+      setImporting(false);
+      if (importRef.current) importRef.current.value = '';
+    }
+  }
+
+  // ── Context menu builder ───────────────────────────────────
+  function openContextMenu(e: React.MouseEvent, item: NotesItem) {
+    const isFolder = item.item_type === 'folder';
+    const menuItems: ContextMenuItem[] = isFolder
+      ? [
+          { label: 'New Note',   icon: Plus,       action: () => createItem(item.id, 'file') },
+          { label: 'New Folder', icon: FolderPlus, action: () => createItem(item.id, 'folder') },
+          { label: 'Rename',     icon: Edit2,      action: () => renameItem(item), divider: true },
+          { label: 'Delete',     icon: Trash2,     action: () => deleteItem(item), danger: true },
+        ]
+      : [
+          { label: 'Export as .md', icon: Download, action: () => {
+              selectFile(item).then(() => setTimeout(exportNote, 300));
+          }},
+          { label: 'Rename',        icon: Edit2,    action: () => renameItem(item), divider: true },
+          { label: 'Delete',        icon: Trash2,   action: () => deleteItem(item), danger: true },
+        ];
+    setCtxMenu({ x: e.clientX, y: e.clientY, items: menuItems });
+  }
+
+  // ── Vault action menu (top bar ⋯ button) ───────────────────
+  function openVaultMenu(e: React.MouseEvent) {
+    if (!currentVaultId) return;
+    const items: ContextMenuItem[] = [
+      { label: 'Rename vault',     icon: Edit2,    action: () => renameVault(currentVaultId) },
+      { label: 'Export vault',     icon: Download, action: exportVault },
+      { label: 'Delete vault',     icon: Trash2,   action: () => deleteVault(currentVaultId), danger: true, divider: true },
+    ];
+    setCtxMenu({ x: e.clientX, y: e.clientY, items });
+  }
+
+  // ── Preview mode flush ─────────────────────────────────────
+  function switchViewMode(mode: 'edit' | 'preview') {
+    if (mode === 'preview') flushSave();
+    setViewMode(mode);
   }
 
   const currentVault = vaults.find(v => v.id === currentVaultId);
 
+  // ── Loading state ──────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="animate-spin text-blue-500" size={32} />
+        <Loader2 className="animate-spin text-purple-500" size={28} />
       </div>
     );
   }
 
+  // ── Render ─────────────────────────────────────────────────
   return (
     <div className="-mx-4 sm:-mx-6 lg:-mx-8 -mt-8 h-[calc(100vh-64px)] flex flex-col bg-[#0a0a0a] font-sans antialiased text-white">
-      {/* Refined Top Bar */}
-      <div className="bg-[#0a0a0a]/80 backdrop-blur-md border-b border-white/5 px-6 py-3 flex items-center justify-between gap-4 flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <button className="lg:hidden p-2 hover:bg-white/5 rounded-xl transition-colors" onClick={() => setSidebarOpen(s => !s)}>
-            {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+
+      {/* Hidden import input */}
+      <input
+        ref={importRef}
+        type="file"
+        accept=".md,.json"
+        className="hidden"
+        onChange={handleImportFile}
+      />
+
+      {/* ── Top Bar ─────────────────────────────────────────── */}
+      <div className="bg-[#0a0a0a]/80 backdrop-blur-md border-b border-white/5 px-4 py-2.5 flex items-center justify-between gap-3 flex-shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Mobile sidebar toggle */}
+          <button
+            className="lg:hidden p-1.5 hover:bg-white/5 rounded-lg"
+            onClick={() => setSidebarOpen(s => !s)}
+          >
+            {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
 
-          <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="Logo" className="w-7 h-7 object-contain" />
-            {vaults.length > 0 ? (
-              <select
-                value={currentVaultId ?? ''}
-                onChange={e => setCurrentVaultId(e.target.value)}
-                className="text-sm font-semibold bg-transparent border-none focus:outline-none text-gray-200 cursor-pointer hover:text-purple-400 transition-colors"
-              >
-                {vaults.map(v => <option key={v.id} value={v.id} className="bg-[#121212]">{v.name}</option>)}
-              </select>
-            ) : <span className="text-sm text-gray-500 font-medium">No Vaults</span>}
-          </div>
+          {/* Logo */}
+          <img src="/logo.png" alt="Logo" className="w-6 h-6 object-contain flex-shrink-0" />
+
+          {/* Vault selector */}
+          {vaults.length > 0 ? (
+            <select
+              value={currentVaultId ?? ''}
+              onChange={e => setCurrentVaultId(e.target.value)}
+              className="text-sm font-semibold bg-transparent border-none focus:outline-none text-gray-200 cursor-pointer hover:text-purple-400 transition-colors min-w-0 truncate"
+            >
+              {vaults.map(v => (
+                <option key={v.id} value={v.id} className="bg-[#121212]">{v.name}</option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-sm text-gray-500">No vaults</span>
+          )}
+
+          {/* Vault actions */}
+          {currentVaultId && (
+            <button
+              onClick={openVaultMenu}
+              className="p-1.5 hover:bg-white/5 rounded-lg text-gray-600 hover:text-gray-300 transition-colors"
+              title="Vault options"
+            >
+              <MoreHorizontal size={16} />
+            </button>
+          )}
         </div>
 
-        <div className="flex items-center gap-3">
-          {saving && <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest animate-pulse">Saving…</span>}
-          <button onClick={createVault} className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[13px] font-semibold transition-all shadow-lg shadow-purple-900/20 active:scale-95">
-            <Plus size={14} className="inline mr-2" /> New Vault
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Saving indicator */}
+          {saving && (
+            <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest hidden sm:block">
+              Saving…
+            </span>
+          )}
+
+          {/* Import button */}
+          <button
+            onClick={() => importRef.current?.click()}
+            disabled={importing}
+            title="Import vault (.ohara.json) or note (.md)"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[12px] font-semibold text-gray-400 hover:text-white transition-all"
+          >
+            {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+            <span className="hidden sm:inline">Import</span>
+          </button>
+
+          {/* New Vault */}
+          <button
+            onClick={createVault}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[12px] font-semibold transition-all shadow-lg shadow-purple-900/20 active:scale-95"
+          >
+            <Plus size={13} />
+            <span className="hidden sm:inline">New Vault</span>
           </button>
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar Explorer */}
-        <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:relative z-40 w-72 bg-[#0a0a0a] border-r border-white/5 flex flex-col transition-transform duration-300 h-full`}>
-          <div className="px-5 py-4 flex items-center justify-between">
-            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest opacity-70">Explorer</span>
+        {/* ── Sidebar ─────────────────────────────────────────── */}
+        <aside className={`
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          lg:translate-x-0 fixed lg:relative z-40 w-72
+          bg-[#0a0a0a] border-r border-white/5 flex flex-col
+          transition-transform duration-300 h-full
+        `}>
+          {/* Sidebar header */}
+          <div className="px-4 py-3 flex items-center justify-between flex-shrink-0">
+            <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">
+              {currentVault?.name ?? 'Explorer'}
+            </span>
             {currentVaultId && (
-              <div className="flex gap-1">
-                <button onClick={() => createItem(null, 'file')} className="p-1.5 hover:bg-white/5 rounded-lg text-purple-400"><Plus size={16} /></button>
-                <button onClick={() => createItem(null, 'folder')} className="p-1.5 hover:bg-white/5 rounded-lg text-purple-400"><FolderPlus size={16} /></button>
+              <div className="flex gap-0.5">
+                <button
+                  onClick={() => createItem(null, 'file')}
+                  title="New note"
+                  className="p-1.5 hover:bg-white/5 rounded-lg text-gray-600 hover:text-purple-400 transition-colors"
+                >
+                  <Plus size={15} />
+                </button>
+                <button
+                  onClick={() => createItem(null, 'folder')}
+                  title="New folder"
+                  className="p-1.5 hover:bg-white/5 rounded-lg text-gray-600 hover:text-purple-400 transition-colors"
+                >
+                  <FolderPlus size={15} />
+                </button>
               </div>
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto pb-6">
+          {/* File tree — drop zone for root level */}
+          <div
+            className="flex-1 overflow-y-auto pb-6"
+            onDragOver={e => { e.preventDefault(); setDragOverId('__root__'); }}
+            onDrop={e => {
+              e.preventDefault();
+              const id = e.dataTransfer.getData('text/plain');
+              if (id) { moveItem(id, null); setDragOverId(undefined); }
+            }}
+          >
             {treeLoading ? (
-              <div className="flex justify-center py-10"><Loader2 className="animate-spin text-purple-500/50" size={20} /></div>
+              <div className="flex justify-center py-10">
+                <Loader2 className="animate-spin text-purple-500/40" size={18} />
+              </div>
+            ) : tree.length === 0 ? (
+              <div className="px-4 py-8 text-center">
+                <FileText size={28} className="mx-auto mb-2 text-gray-700" />
+                <p className="text-[12px] text-gray-600">No notes yet</p>
+                <button
+                  onClick={() => createItem(null, 'file')}
+                  className="mt-2 text-[11px] text-purple-500 hover:text-purple-400"
+                >
+                  Create your first note
+                </button>
+              </div>
             ) : (
               tree.map(item => (
-                <TreeItem key={item.id} item={item} level={0} selectedId={selectedItem?.id} onSelect={selectFile} onContextMenu={handleContextMenu} />
+                <TreeItem
+                  key={item.id}
+                  item={item}
+                  level={0}
+                  selectedId={selectedItem?.id}
+                  dragOverId={dragOverId}
+                  onSelect={selectFile}
+                  onContextMenu={openContextMenu}
+                  onMove={moveItem}
+                  onDragStart={() => {}}
+                  onDragEnd={() => setDragOverId(undefined)}
+                  onDragOver={setDragOverId}
+                />
               ))
             )}
           </div>
         </aside>
 
-        {/* Backdrop for mobile */}
-        {sidebarOpen && <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />}
+        {/* Mobile backdrop */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
 
-        {/* Main Workspace */}
+        {/* ── Main workspace ───────────────────────────────────── */}
         <main className="flex-1 flex flex-col overflow-hidden bg-[#0c0c0c]">
           {selectedItem ? (
             <>
-              <div className="px-8 py-3 border-b border-white/5 flex items-center justify-between bg-[#0a0a0a]/50 flex-shrink-0">
-                <div className="flex items-center gap-3 min-w-0">
-                  <FileText size={16} className="text-purple-400 flex-shrink-0" />
-                  <span className="text-[13px] font-semibold text-gray-200 truncate">{selectedItem.name}</span>
-                </div>
-                <div className="flex bg-white/5 rounded-xl p-1 border border-white/10">
-                  {(['edit', 'preview'] as const).map(mode => (
-                    <button
-                      key={mode}
-                      onClick={() => { if (mode === 'preview') flushSave(); setViewMode(mode); }}
-                      className={`px-4 py-1.5 text-[12px] font-bold rounded-lg transition-all capitalize tracking-wide ${
-                        viewMode === mode ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'
-                      }`}
-                    >
-                      {mode}
-                    </button>
-                  ))}
-                </div>
+              {/* File name bar */}
+              <div className="px-6 py-2 border-b border-white/5 flex items-center gap-3 bg-[#0a0a0a]/50 flex-shrink-0">
+                <FileText size={14} className="text-purple-400 flex-shrink-0" />
+                <span className="text-[13px] font-semibold text-gray-200 truncate flex-1">
+                  {selectedItem.name}
+                </span>
+                {/* Export note button */}
+                {viewMode === 'edit' && (
+                  <button
+                    onClick={exportNote}
+                    title="Export as .md"
+                    className="p-1.5 hover:bg-white/5 rounded-lg text-gray-600 hover:text-gray-300 transition-colors flex-shrink-0"
+                  >
+                    <Download size={14} />
+                  </button>
+                )}
               </div>
 
+              {/* Feature 3: Formatting toolbar (edit mode only) */}
+              {viewMode === 'edit' && (
+                <Toolbar
+                  textareaRef={textareaRef}
+                  content={content}
+                  viewMode={viewMode}
+                  onContentChange={handleContentChange}
+                  onViewModeChange={switchViewMode}
+                />
+              )}
+
+              {/* Preview toggle bar (preview mode) */}
+              {viewMode === 'preview' && (
+                <div className="px-4 py-1.5 border-b border-white/5 bg-[#0a0a0a]/50 flex justify-end flex-shrink-0">
+                  <div className="flex bg-white/5 rounded-lg p-0.5 border border-white/10">
+                    <button
+                      onClick={() => setViewMode('edit')}
+                      className="px-3 py-1 text-[11px] font-bold rounded-md text-gray-500 hover:text-gray-300 transition-all"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="px-3 py-1 text-[11px] font-bold rounded-md bg-purple-600 text-white shadow"
+                    >
+                      Preview
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Content area */}
               <div className="flex-1 overflow-hidden relative">
                 {viewMode === 'edit' ? (
                   <textarea
+                    ref={textareaRef}
                     value={content}
                     onChange={e => handleContentChange(e.target.value)}
                     className="w-full h-full p-10 bg-transparent text-gray-200 resize-none focus:outline-none font-mono text-[14px] leading-loose placeholder:text-gray-700"
-                    placeholder="Type to begin..."
+                    placeholder="Start writing… (Markdown supported)"
                     spellCheck={false}
                   />
                 ) : (
-                  <div className="h-full overflow-y-auto p-12 custom-scrollbar">
-                    <div className="max-w-3xl mx-auto prose prose-invert prose-purple" dangerouslySetInnerHTML={{ __html: parseMarkdown(content) }} />
-                  </div>
+                  <LivePreview content={content} fileName={selectedItem.name} />
                 )}
-                <div className="absolute top-0 right-0 w-64 h-64 bg-purple-600/5 blur-[100px] pointer-events-none" />
+                {/* Ambient glow */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-purple-600/4 blur-[100px] pointer-events-none" />
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-12">
-              <BookOpen size={48} className="text-white/10 mb-4" />
-              <h2 className="text-xl font-semibold text-white mb-2">Select a Note</h2>
-              <p className="text-[13px] text-gray-500 max-w-[240px] leading-relaxed">Choose an existing note from the explorer or create a new one to begin your work.</p>
+            /* Empty state */
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-12 gap-4">
+              <div className="p-6 bg-white/3 rounded-2xl border border-white/5">
+                <BookOpen size={40} className="text-white/10" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-white/60 mb-1">Select a note</h2>
+                <p className="text-[13px] text-gray-600 max-w-[220px] leading-relaxed">
+                  Choose a note from the sidebar or create a new one to start writing.
+                </p>
+              </div>
+              {vaults.length === 0 && (
+                <button
+                  onClick={createVault}
+                  className="mt-2 px-4 py-2 bg-purple-600/20 border border-purple-500/30 text-purple-400 rounded-xl text-[13px] font-semibold hover:bg-purple-600/30 transition-all"
+                >
+                  Create your first vault
+                </button>
+              )}
             </div>
           )}
         </main>
       </div>
 
-      {/* Context Menu Logic */}
-      {contextMenu && (
+      {/* Context menu */}
+      {ctxMenu && (
         <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
-          items={
-            contextMenu.item.item_type === 'folder'
-              ? [
-                  { label: 'New Note',   icon: Plus,       action: () => createItem(contextMenu.item.id, 'file') },
-                  { label: 'New Folder', icon: FolderPlus, action: () => createItem(contextMenu.item.id, 'folder') },
-                  { label: 'Rename',     icon: Edit2,      action: () => renameItem(contextMenu.item) },
-                  { label: 'Delete',     icon: Trash2,     action: () => deleteItem(contextMenu.item) },
-                ]
-              : [
-                  { label: 'Rename',     icon: Edit2,      action: () => renameItem(contextMenu.item) },
-                  { label: 'Delete',     icon: Trash2,     action: () => deleteItem(contextMenu.item) },
-                ]
-          }
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          items={ctxMenu.items}
+          onClose={() => setCtxMenu(null)}
         />
       )}
     </div>
