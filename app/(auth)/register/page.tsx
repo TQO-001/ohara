@@ -81,8 +81,8 @@ function RegisterContent() {
           <Image 
             src="/logo.png" 
             alt="Ohara Logo" 
-            width={64} 
-            height={64} 
+            width={104} 
+            height={104} 
             className="object-contain drop-shadow-[0_0_10px_rgba(168,85,247,0.5)]"
           />
         </div>
@@ -97,12 +97,6 @@ function RegisterContent() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl px-4 py-2.5 text-sm text-center">
-            {error}
-          </div>
-        )}
       <form onSubmit={handleSubmit} className="space-y-5">
         {error && (
           <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl px-4 py-2.5 text-sm text-center">
@@ -145,6 +139,7 @@ function RegisterContent() {
 
         <div className="pt-2 space-y-6">
           <button
+            type="submit"
             disabled={loading}
             className="w-full bg-purple-600 hover:bg-purple-500 text-white font-medium py-3 px-4 rounded-xl transition-all shadow-lg shadow-purple-900/20 disabled:opacity-50 active:scale-[0.98] hover:shadow-[0_0_25px_rgba(168,85,247,0.4)]"
           >
@@ -165,7 +160,6 @@ export default function RegisterPage() {
     <main className="relative min-h-screen w-full flex items-center justify-center bg-[#0a0a0a] overflow-hidden font-sans antialiased">
       <div className="absolute inset-0 z-0">
         <Suspense fallback={null}>
-          {/* Use 'as any' here to solve the TypeScript tuple/readonly error */}
           <Hyperspeed effectOptions={HYPERSPEED_OPTIONS as any} />
         </Suspense>
       </div>

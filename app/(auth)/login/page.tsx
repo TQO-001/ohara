@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent, Suspense, useMemo } from 'react';
+import { useState, FormEvent, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -40,7 +40,7 @@ const HYPERSPEED_OPTIONS = {
     "rightCars": [0xd8b4fe, 0xa855f7, 0x6b21a8],
     "sticks": 0xa855f7
   }
-};
+} as const;
 
 function LoginContent() {
   const router = useRouter();
@@ -79,19 +79,17 @@ function LoginContent() {
     }
   }
 
-  // Input styling constant to keep JSX clean
   const inputStyles = "w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-gray-500 transition-all outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 focus:shadow-[0_0_20px_rgba(168,85,247,0.25)] shadow-inner";
 
   return (
-    <div className="w-full max-w-sm relative z-10">
     <div className="w-full max-w-sm relative z-10">
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4">
           <Image 
             src="/logo.png" 
             alt="Ohara Logo" 
-            width={64} 
-            height={64} 
+            width={104} 
+            height={104} 
             className="object-contain drop-shadow-[0_0_10px_rgba(168,85,247,0.5)]"
           />
         </div>
@@ -166,16 +164,13 @@ function LoginContent() {
 export default function LoginPage() {
   return (
     <main className="relative min-h-screen w-full flex items-center justify-center bg-[#0a0a0a] overflow-hidden font-sans antialiased">
-      {/* Background Layer */}
       <div className="absolute inset-0 z-0">
         <Suspense fallback={null}>
           <Hyperspeed effectOptions={HYPERSPEED_OPTIONS as any} />
         </Suspense>
       </div>
 
-      {/* Foreground Content Layer */}
       <div className="px-4 w-full flex justify-center">
-        {/* Wrap LoginContent in Suspense to fix the Prerender Error */}
         <Suspense fallback={<div className="text-white">Loading...</div>}>
           <LoginContent />
         </Suspense>
