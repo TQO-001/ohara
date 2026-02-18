@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent, Suspense } from 'react';
+import { useState, FormEvent, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -83,6 +83,7 @@ function LoginContent() {
   const inputStyles = "w-full px-4 py-3 rounded-xl border border-white/10 bg-white/5 text-white placeholder-gray-500 transition-all outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 focus:shadow-[0_0_20px_rgba(168,85,247,0.25)] shadow-inner";
 
   return (
+    <div className="w-full max-w-sm relative z-10">
     <div className="w-full max-w-sm relative z-10">
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4">
