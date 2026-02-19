@@ -1,5 +1,6 @@
 // ============================================================
-// src/lib/db/queries/notes.ts — Notes SQL Queries
+// lib/db/queries/notes.ts — Notes SQL Queries (UPDATED)
+// Added support for folder color field
 // ============================================================
 
 import sql from '@/lib/db';
@@ -56,24 +57,24 @@ export async function deleteVault(id: string, userId: string): Promise<boolean> 
 
 /**
  * Get ALL items in a vault (flat list).
- * The frontend/server will build the tree from this.
+ * NOW INCLUDES COLOR FIELD.
  */
 export async function getItemsByVaultId(vaultId: string): Promise<NotesItem[]> {
   return sql<NotesItem[]>`
-    SELECT id, vault_id, parent_id, name, item_type, created_at, updated_at
+    SELECT id, vault_id, parent_id, name, item_type, color, created_at, updated_at
     FROM notes_items
     WHERE vault_id = ${vaultId}
     ORDER BY item_type DESC, name ASC
-    -- Folders (DESC) come before files (ASC) alphabetically
   `;
 }
 
 /**
  * Get a single item WITH its content.
+ * NOW INCLUDES COLOR FIELD.
  */
 export async function getItemById(id: string, vaultId: string): Promise<NotesItem | null> {
   const rows = await sql<NotesItem[]>`
-    SELECT id, vault_id, parent_id, name, item_type, content, created_at, updated_at
+    SELECT id, vault_id, parent_id, name, item_type, content, color, created_at, updated_at
     FROM notes_items
     WHERE id = ${id} AND vault_id = ${vaultId}
     LIMIT 1
@@ -97,27 +98,39 @@ export async function createItem(
       ${itemType},
       ${content ?? ''}
     )
-    RETURNING id, vault_id, parent_id, name, item_type, content, created_at, updated_at
+    RETURNING id, vault_id, parent_id, name, item_type, content, color, created_at, updated_at
   `;
   return rows[0];
 }
 
+/**
+ * Update item - NOW SUPPORTS COLOR FIELD
+ */
 export async function updateItem(
   id: string,
   vaultId: string,
-  data: { name?: string; content?: string; parent_id?: string | null }
+  data: { 
+    name?: string; 
+    content?: string; 
+    parent_id?: string | null;
+    color?: string | null;  // NEW
+  }
 ): Promise<NotesItem | null> {
   const rows = await sql<NotesItem[]>`
     UPDATE notes_items
     SET
       name      = COALESCE(${data.name ?? null}, name),
       content   = COALESCE(${data.content ?? null}, content),
+      color     = CASE
+                    WHEN ${data.color !== undefined} THEN ${data.color ?? null}
+                    ELSE color
+                  END,
       parent_id = CASE
                     WHEN ${data.parent_id !== undefined} THEN ${data.parent_id ?? null}
                     ELSE parent_id
                   END
     WHERE id = ${id} AND vault_id = ${vaultId}
-    RETURNING id, vault_id, parent_id, name, item_type, content, created_at, updated_at
+    RETURNING id, vault_id, parent_id, name, item_type, content, color, created_at, updated_at
   `;
   return rows[0] ?? null;
 }
@@ -131,18 +144,15 @@ export async function deleteItem(id: string, vaultId: string): Promise<boolean> 
 
 /**
  * Build a nested tree from a flat list of items.
- * Used to send the vault structure to the frontend as a tree.
  */
 export function buildItemTree(items: NotesItem[]): NotesItem[] {
   const map = new Map<string, NotesItem>();
   const roots: NotesItem[] = [];
 
-  // First pass: create a map of id -> item, init children arrays on folders
   for (const item of items) {
     map.set(item.id, { ...item, children: item.item_type === 'folder' ? [] : undefined });
   }
 
-  // Second pass: attach children to their parents
   for (const item of map.values()) {
     if (item.parent_id) {
       const parent = map.get(item.parent_id);

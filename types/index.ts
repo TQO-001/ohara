@@ -79,6 +79,7 @@ export interface NotesItem {
   content?: string;  // Only present for files
   created_at: string;
   updated_at: string;
+  color?: string;
   children?: NotesItem[];  // Populated when building tree (folders only)
 }
 
