@@ -4,13 +4,14 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
-import { BookOpen, FolderOpen, LayoutDashboard, LogOut, Menu, X } from 'lucide-react';
+import { Home, BookOpen, FolderOpen, LayoutDashboard, LogOut, Menu, X } from 'lucide-react';
 
 interface DashboardNavProps {
   user: { name: string; email: string };
 }
 
 const navLinks = [
+  { href: '/', label: 'Home', icon: Home },
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/projects', label: 'Projects', icon: FolderOpen },
   { href: '/notes', label: 'Notes', icon: BookOpen },
