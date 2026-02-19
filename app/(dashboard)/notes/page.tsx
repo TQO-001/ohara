@@ -1177,67 +1177,164 @@ function LivePreviewEditor({ content, onChange }: { content: string; onChange: (
   }
 
   return (
-    <div ref={editorRef} className="w-full h-full overflow-y-auto p-10 max-w-3xl mx-auto">
-      {blocks.map((block, idx) => (
-        <div key={idx} className="mb-6 group relative">
-          {editingBlock === idx ? (
-            <textarea
-              autoFocus
-              value={block}
-              onChange={e => {
-                const newBlocks = [...blocks];
-                newBlocks[idx] = e.target.value;
-                onChange(newBlocks.join('\n\n'));
-              }}
-              onBlur={() => setEditingBlock(null)}
-              className="w-full p-3 bg-white/5 border border-purple-500/30 rounded-lg text-gray-200 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-              rows={block.split('\n').length}
-            />
-          ) : (
-            <div
-              onClick={() => setEditingBlock(idx)}
-              className="cursor-text p-3 rounded-lg hover:bg-white/5 transition-colors"
-              dangerouslySetInnerHTML={{ __html: parseMarkdown(block) }}
-            />
-          )}
-        </div>
-      ))}
+    <div ref={editorRef} className="w-full h-full overflow-y-auto">
+      <div className="max-w-3xl mx-auto px-10 py-10">
+        {blocks.map((block, idx) => (
+          <div key={idx} className="mb-6 group relative">
+            {editingBlock === idx ? (
+              <textarea
+                autoFocus
+                value={block}
+                onChange={e => {
+                  const newBlocks = [...blocks];
+                  newBlocks[idx] = e.target.value;
+                  onChange(newBlocks.join('\n\n'));
+                }}
+                onBlur={() => setEditingBlock(null)}
+                className="w-full p-3 bg-white/5 border border-purple-500/30 rounded-lg text-gray-200 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                rows={block.split('\n').length}
+              />
+            ) : (
+              <div
+                onClick={() => setEditingBlock(idx)}
+                className="cursor-text p-3 rounded-lg hover:bg-white/5 transition-colors prose-content text-gray-200"
+                dangerouslySetInnerHTML={{ __html: parseMarkdown(block) }}
+              />
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-// ── Markdown Parser (simplified version) ───────────────────────
+// ── Markdown Parser ─────────────────────────────────────────────
 
 function parseMarkdown(md: string): string {
   if (!md) return '';
-  let html = md;
 
-  // Code blocks
-  html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (_m, lang, code) =>
-    `<pre class="bg-gray-900 text-gray-100 p-4 rounded-lg my-4 overflow-x-auto text-sm"><code>${escapeHtml(code.trim())}</code></pre>`
-  );
+  // ── helpers ──
+  function inlineFormat(text: string): string {
+    return text
+      .replace(/\*\*(.*?)\*\*/g,          '<strong class="font-semibold">$1</strong>')
+      .replace(/\*(.*?)\*/g,              '<em class="italic">$1</em>')
+      .replace(/`([^`]+)`/g,              '<code class="bg-gray-800 px-1.5 py-0.5 rounded text-sm font-mono text-pink-400">$1</code>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" class="text-blue-400 underline hover:text-blue-300" target="_blank">$1</a>');
+  }
 
-  // Headings
-  html = html.replace(/^### (.*$)/gim,    '<h3 class="text-xl font-bold mt-5 mb-2">$1</h3>');
-  html = html.replace(/^## (.*$)/gim,     '<h2 class="text-2xl font-bold mt-6 mb-3 text-purple-400">$1</h2>');
-  html = html.replace(/^# (.*$)/gim,      '<h1 class="text-3xl font-bold mt-6 mb-4 border-b border-white/10 pb-2">$1</h1>');
+  // ── parse tables ──
+  function parseTable(lines: string[]): string {
+    // lines[0] = header row, lines[1] = separator, lines[2+] = body rows
+    const parseRow = (line: string) =>
+      line.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
 
-  // Inline
-  html = html.replace(/\*\*(.*?)\*\*/g,   '<strong class="font-semibold">$1</strong>');
-  html = html.replace(/\*(.*?)\*/g,       '<em class="italic">$1</em>');
-  html = html.replace(/`([^`]+)`/g,       '<code class="bg-gray-800 px-1.5 py-0.5 rounded text-sm font-mono text-pink-400">$1</code>');
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-blue-400 underline hover:text-blue-300" target="_blank">$1</a>');
+    const headers = parseRow(lines[0]);
+    const alignRow = parseRow(lines[1]);
+    const aligns = alignRow.map(cell => {
+      if (/^:-+:$/.test(cell)) return 'text-center';
+      if (/^-+:$/.test(cell))  return 'text-right';
+      return 'text-left';
+    });
 
-  // Lists
-  html = html.replace(/^\- (.+)$/gm,      '<li class="ml-4 my-0.5 list-disc">$1</li>');
-  html = html.replace(/^\d+\. (.+)$/gm,   '<li class="ml-4 my-0.5 list-decimal">$1</li>');
+    const headerCells = headers
+      .map((h, i) => `<th class="px-4 py-2 font-semibold text-purple-300 border-b border-white/10 ${aligns[i] ?? 'text-left'}">${inlineFormat(h)}</th>`)
+      .join('');
 
-  // Paragraphs
-  html = html.replace(/\n\n/g, '</p><p class="my-3">');
-  html = '<p class="my-3">' + html + '</p>';
-  html = html.replace(/\n/g, '<br/>');
+    const bodyRows = lines.slice(2).map(line => {
+      const cells = parseRow(line);
+      const tds = cells
+        .map((c, i) => `<td class="px-4 py-2 border-b border-white/5 ${aligns[i] ?? 'text-left'}">${inlineFormat(c)}</td>`)
+        .join('');
+      return `<tr class="hover:bg-white/3 transition-colors">${tds}</tr>`;
+    }).join('');
 
-  return html;
+    return `<div class="overflow-x-auto my-4"><table class="w-full text-sm text-gray-300 border border-white/10 rounded-lg overflow-hidden"><thead><tr class="bg-white/5">${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
+  }
+
+  // ── block-level processing ──
+  const lines = md.split('\n');
+  const output: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Fenced code block
+    if (/^```/.test(line)) {
+      const _lang = line.slice(3).trim(); // reserved for future syntax highlighting
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++; // consume closing ```
+      output.push(`<pre class="bg-gray-900 text-gray-100 p-4 rounded-lg my-4 overflow-x-auto text-sm"><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
+      continue;
+    }
+
+    // Table: current line has pipes AND next line is a separator row
+    if (/\|/.test(line) && lines[i + 1] && /^\|?\s*[-:]+[-| :]*\|/.test(lines[i + 1])) {
+      const tableLines: string[] = [line];
+      i++;
+      while (i < lines.length && /\|/.test(lines[i])) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      output.push(parseTable(tableLines));
+      continue;
+    }
+
+    // Headings
+    if (/^### /.test(line)) { output.push(`<h3 class="text-xl font-bold mt-5 mb-2">${inlineFormat(line.slice(4))}</h3>`); i++; continue; }
+    if (/^## /.test(line))  { output.push(`<h2 class="text-2xl font-bold mt-6 mb-3 text-purple-400">${inlineFormat(line.slice(3))}</h2>`); i++; continue; }
+    if (/^# /.test(line))   { output.push(`<h1 class="text-3xl font-bold mt-6 mb-4 border-b border-white/10 pb-2">${inlineFormat(line.slice(2))}</h1>`); i++; continue; }
+
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) { output.push('<hr class="border-white/10 my-6" />'); i++; continue; }
+
+    // Unordered list block
+    if (/^- /.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^- /.test(lines[i])) {
+        items.push(`<li class="my-0.5">${inlineFormat(lines[i].slice(2))}</li>`);
+        i++;
+      }
+      output.push(`<ul class="list-disc ml-6 my-3 space-y-0.5">${items.join('')}</ul>`);
+      continue;
+    }
+
+    // Ordered list block
+    if (/^\d+\. /.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\d+\. /.test(lines[i])) {
+        items.push(`<li class="my-0.5">${inlineFormat(lines[i].replace(/^\d+\. /, ''))}</li>`);
+        i++;
+      }
+      output.push(`<ol class="list-decimal ml-6 my-3 space-y-0.5">${items.join('')}</ol>`);
+      continue;
+    }
+
+    // Blank line
+    if (line.trim() === '') { i++; continue; }
+
+    // Paragraph: collect consecutive non-block lines
+    const paraLines: string[] = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== '' &&
+      !/^(#{1,6} |```|- |\d+\. |---)/.test(lines[i]) &&
+      !/\|/.test(lines[i])
+    ) {
+      paraLines.push(inlineFormat(lines[i]));
+      i++;
+    }
+    if (paraLines.length) {
+      output.push(`<p class="my-3 leading-relaxed">${paraLines.join('<br/>')}</p>`);
+    }
+  }
+
+  return output.join('\n');
 }
 
 function escapeHtml(text: string): string {
