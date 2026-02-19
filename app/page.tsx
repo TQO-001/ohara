@@ -97,9 +97,9 @@ export default function HomePage() {
             </Link>
 
             <div className="hidden md:flex items-center gap-8 text-[13px] text-gray-400">
-              <a href="#features" className="hover:text-white transition-colors">Features</a>
-              <a href="#how-it-works" className="hover:text-white transition-colors">How it works</a>
-              <a href="https://github.com/YOUR_USERNAME/ohara" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">GitHub</a>
+              <p className="hover:text-white transition-colors">
+                More coming soon... probably idk
+              </p>
             </div>
 
             <div className="flex items-center gap-3">
